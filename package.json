@@ -16,7 +16,8 @@
     "dev": "esbuild src/index.ts --bundle --format=esm --outdir=dist --servedir=.",
     "build": "npm run build:esm && npm run build:types",
     "build:esm": "esbuild src/index.ts --bundle --format=esm --outdir=dist",
-    "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist/types"
+    "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist/types",
+    "prepare": "npm run build"
   },
   "repository": "muxinc/media-group",
   "author": "Wesley Luyten <me@wesleyluyten.com> (https://wesleyluyten.com)",
