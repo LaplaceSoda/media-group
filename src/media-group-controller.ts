@@ -345,7 +345,9 @@ export class MediaGroupController extends EventTarget {
         // https://www.prosoundtraining.com/site/wp-content/uploads/2014/02/Lip-Sync-Errors.pdf
         // Safari is very difficult to get synced so close.
         // Working with playbackRate is impossible on Safari, try with seeking.
-        const target = child.dataset.groupSeekPrecision ?? 0.05;
+        // Adjust precision based on playback rate
+        const basePrecision = +(child.dataset.groupSeekPrecision ?? 0.05);
+        const target = basePrecision * Math.max(1, sourcePlaybackRate);
         const offset = 0;
         const targetTime = sourceTime + offset / 1000;
         const currentTime = child.currentTime;
@@ -382,8 +384,9 @@ export class MediaGroupController extends EventTarget {
         diff = average(this.#diffSamples);
 
         if (Math.abs(diff) < target) {
-          if (child.playbackRate != 1) {
-            child.playbackRate = 1;
+          // For Safari, also use source playback rate when synced
+          if (child.playbackRate != sourcePlaybackRate) {
+            child.playbackRate = sourcePlaybackRate;
           }
 
           clearTimeout(this.#syncTimeoutId);
@@ -433,7 +436,9 @@ export class MediaGroupController extends EventTarget {
 
       try {
         // https://www.prosoundtraining.com/site/wp-content/uploads/2014/02/Lip-Sync-Errors.pdf
-        const target = 0.025;
+        // Adjust sync precision based on playback rate - higher rates need looser precision
+        const basePrecision = 0.025;
+        const target = basePrecision * Math.max(1, sourcePlaybackRate);
         const offset = 0;
         const targetTime = sourceTime + offset / 1000;
         const currentTime = child.currentTime;
@@ -458,19 +463,25 @@ export class MediaGroupController extends EventTarget {
         }
 
         if (Math.abs(diff) < target) {
-          if (child.playbackRate != 1) {
-            child.playbackRate = 1;
+          // When synced, use the source playback rate instead of hardcoded 1
+          if (child.playbackRate != sourcePlaybackRate) {
+            child.playbackRate = sourcePlaybackRate;
           }
           return;
         }
 
         const rate = Math.max(
-          0,
+          0.1, // Minimum rate to avoid stopping
           ((diff + this.#correctionTime) / this.#correctionTime) *
           sourcePlaybackRate
         );
 
-        if (sourcePaused || rate < 0 || Math.abs(diff) >= this.#seekThreshold) {
+        // Apply limits based on source playback rate to prevent extreme speeds
+        const maxRate = sourcePlaybackRate * 2; // Allow up to 2x the source rate for sync
+        const minRate = sourcePlaybackRate * 0.5; // Allow down to 0.5x the source rate for sync
+        const clampedRate = Math.max(minRate, Math.min(maxRate, rate));
+
+        if (sourcePaused || clampedRate < 0.1 || Math.abs(diff) >= this.#seekThreshold) {
           if (child.playbackRate != sourcePlaybackRate) {
             child.playbackRate = sourcePlaybackRate;
           }
@@ -478,8 +489,8 @@ export class MediaGroupController extends EventTarget {
             child.currentTime = targetTime;
           }
         } else {
-          if (child.playbackRate != rate) {
-            child.playbackRate = rate;
+          if (child.playbackRate != clampedRate) {
+            child.playbackRate = clampedRate;
           }
         }
       } catch (error) {
