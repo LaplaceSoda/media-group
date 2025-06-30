@@ -154,7 +154,9 @@ export class MediaGroupController extends EventTarget {
         if (this.#prevPlaybackRate != null) return;
 
         this.#prevPlaybackRate = this.playbackRate;
-        this.playbackRate = 0;
+        // Set playback rate to 0 seems to fail to change back
+        // here set it to a very low value
+        this.playbackRate = 0.25;
         this.dispatchEvent(new Event('waiting'));
 
         const interval = setInterval(() => {
@@ -428,7 +430,7 @@ export class MediaGroupController extends EventTarget {
         const rate = Math.max(
           0,
           ((diff + this.#correctionTime) / this.#correctionTime) *
-            sourcePlaybackRate
+          sourcePlaybackRate
         );
 
         if (sourcePaused || rate < 0 || Math.abs(diff) >= this.#seekThreshold) {
@@ -522,7 +524,7 @@ class PublicPromise<T> extends Promise<T> {
   resolve?: () => void;
   reject?: () => void;
   // eslint-disable-next-line
-  constructor(executor = (r: Function, j: Function) => {}) {
+  constructor(executor = (r: Function, j: Function) => { }) {
     let res, rej;
     super((resolve, reject) => {
       executor(resolve, reject);
