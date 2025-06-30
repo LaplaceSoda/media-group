@@ -61,6 +61,7 @@ export class MediaGroupController extends EventTarget {
   #lastSeek = 0;
   #id = uniqueId('g');
   #prevPlaybackRate?: number;
+  #waitingIntervalId?: ReturnType<typeof setInterval>;
 
   constructor() {
     super();
@@ -107,6 +108,20 @@ export class MediaGroupController extends EventTarget {
         this.dispatchEvent(new Event('loadeddata'));
       },
       canplay: ({ currentTarget }) => {
+        // If we're in waiting state and this media is ready, check if we can restore speed
+        if (this.#prevPlaybackRate != null && this.#waitingIntervalId != null) {
+          const media = currentTarget as HTMLMediaElement;
+          const allReady = this.#mediaList.length > 0 &&
+            this.#mediaList.every((m) => m.readyState >= 3);
+
+          if (allReady) {
+            clearInterval(this.#waitingIntervalId);
+            this.#waitingIntervalId = undefined;
+            this.playbackRate = this.#prevPlaybackRate;
+            this.#prevPlaybackRate = undefined;
+          }
+        }
+
         if (currentTarget !== this.#baseMedia) return;
         this.dispatchEvent(new Event('canplay'));
       },
@@ -151,24 +166,46 @@ export class MediaGroupController extends EventTarget {
         this.dispatchEvent(new Event('seeking'));
       },
       waiting: () => {
-        if (this.#prevPlaybackRate != null) return;
+        // If already handling waiting state, don't create another interval
+        if (this.#prevPlaybackRate != null || this.#waitingIntervalId != null) return;
 
         this.#prevPlaybackRate = this.playbackRate;
-        // Set playback rate to 0 seems to fail to change back
-        // here set it to a very low value
+        // Don't set to 0 as it may cause issues with some browsers
+        // Use a very low value instead
         this.playbackRate = 0.25;
         this.dispatchEvent(new Event('waiting'));
 
-        const interval = setInterval(() => {
-          if (
-            this.#prevPlaybackRate != null &&
-            this.#mediaList.every((media) => media.readyState >= 3)
-          ) {
-            clearInterval(interval);
+        this.#waitingIntervalId = setInterval(() => {
+          // Check if all media elements are ready to play
+          const allReady = this.#mediaList.length > 0 &&
+            this.#mediaList.every((media) => media.readyState >= 3);
+
+          if (this.#prevPlaybackRate != null && allReady) {
+            // Clear interval first
+            if (this.#waitingIntervalId != null) {
+              clearInterval(this.#waitingIntervalId);
+              this.#waitingIntervalId = undefined;
+            }
+
+            // Restore playback rate
             this.playbackRate = this.#prevPlaybackRate;
             this.#prevPlaybackRate = undefined;
           }
         }, 100);
+
+        // Failsafe: Clear interval after 5 seconds to prevent memory leaks
+        setTimeout(() => {
+          if (this.#waitingIntervalId != null) {
+            clearInterval(this.#waitingIntervalId);
+            this.#waitingIntervalId = undefined;
+
+            // Restore playback rate if still waiting
+            if (this.#prevPlaybackRate != null) {
+              this.playbackRate = this.#prevPlaybackRate;
+              this.#prevPlaybackRate = undefined;
+            }
+          }
+        }, 5000);
       },
       progress: () => {
         this.dispatchEvent(new Event('progress'));
@@ -474,8 +511,12 @@ export class MediaGroupController extends EventTarget {
 
   #delete(mediaElement: HTMLMediaElement) {
     this.#removeListeners(mediaElement);
-
     this.#mediaElements.delete(mediaElement);
+
+    // If no more media elements, clean up waiting state
+    if (this.#mediaElements.size === 0) {
+      this.#cleanupWaitingState();
+    }
   }
 
   #addListeners(mediaElement: HTMLMediaElement) {
@@ -488,6 +529,18 @@ export class MediaGroupController extends EventTarget {
     Object.entries(this.#listeners).forEach(([type, listener]) => {
       mediaElement.removeEventListener(type, listener);
     });
+  }
+
+  #cleanupWaitingState() {
+    if (this.#waitingIntervalId != null) {
+      clearInterval(this.#waitingIntervalId);
+      this.#waitingIntervalId = undefined;
+    }
+
+    if (this.#prevPlaybackRate != null) {
+      this.playbackRate = this.#prevPlaybackRate;
+      this.#prevPlaybackRate = undefined;
+    }
   }
 }
 
