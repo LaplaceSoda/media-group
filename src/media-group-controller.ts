@@ -117,7 +117,13 @@ export class MediaGroupController extends EventTarget {
           if (allReady) {
             clearInterval(this.#waitingIntervalId);
             this.#waitingIntervalId = undefined;
-            this.playbackRate = this.#prevPlaybackRate;
+            // Restore muted state
+            this.#mediaList.forEach((media) => {
+              if (media.dataset.tempMuted === 'true') {
+                media.muted = false;
+                delete media.dataset.tempMuted;
+              }
+            });
             this.#prevPlaybackRate = undefined;
           }
         }
@@ -169,10 +175,16 @@ export class MediaGroupController extends EventTarget {
         // If already handling waiting state, don't create another interval
         if (this.#prevPlaybackRate != null || this.#waitingIntervalId != null) return;
 
+        // During seeking/waiting, temporarily mute audio to avoid stuttering
+        // instead of changing playback rate which causes audio artifacts
         this.#prevPlaybackRate = this.playbackRate;
-        // Don't set to 0 as it may cause issues with some browsers
-        // Use a very low value instead
-        this.playbackRate = 0.25;
+        this.#mediaList.forEach((media) => {
+          if (!media.muted) {
+            media.dataset.tempMuted = 'true';
+            media.muted = true;
+          }
+        });
+
         this.dispatchEvent(new Event('waiting'));
 
         this.#waitingIntervalId = setInterval(() => {
@@ -187,8 +199,13 @@ export class MediaGroupController extends EventTarget {
               this.#waitingIntervalId = undefined;
             }
 
-            // Restore playback rate
-            this.playbackRate = this.#prevPlaybackRate;
+            // Restore muted state instead of playback rate
+            this.#mediaList.forEach((media) => {
+              if (media.dataset.tempMuted === 'true') {
+                media.muted = false;
+                delete media.dataset.tempMuted;
+              }
+            });
             this.#prevPlaybackRate = undefined;
           }
         }, 100);
@@ -199,9 +216,14 @@ export class MediaGroupController extends EventTarget {
             clearInterval(this.#waitingIntervalId);
             this.#waitingIntervalId = undefined;
 
-            // Restore playback rate if still waiting
+            // Restore muted state if still waiting
             if (this.#prevPlaybackRate != null) {
-              this.playbackRate = this.#prevPlaybackRate;
+              this.#mediaList.forEach((media) => {
+                if (media.dataset.tempMuted === 'true') {
+                  media.muted = false;
+                  delete media.dataset.tempMuted;
+                }
+              });
               this.#prevPlaybackRate = undefined;
             }
           }
@@ -549,7 +571,13 @@ export class MediaGroupController extends EventTarget {
     }
 
     if (this.#prevPlaybackRate != null) {
-      this.playbackRate = this.#prevPlaybackRate;
+      // Restore muted state instead of playback rate
+      this.#mediaList.forEach((media) => {
+        if (media.dataset.tempMuted === 'true') {
+          media.muted = false;
+          delete media.dataset.tempMuted;
+        }
+      });
       this.#prevPlaybackRate = undefined;
     }
   }
